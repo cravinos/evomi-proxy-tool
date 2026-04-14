@@ -226,8 +226,13 @@ Session duration: 30 min`}</pre>
             color: 'border-lime-500/20 bg-lime-500/5',
           },
           {
-            tip: 'Use ISP targeting for cleaner IPs',
-            detail: 'IPs from major ISPs (Comcast, AT&T, Spectrum) look more legitimate than smaller providers. Filter by ISP when success rate matters.',
+            tip: 'ISP targeting: Random vs Specific vs Diversified',
+            detail: 'Selecting a specific ISP locks every proxy in your list to that one provider — all 10k from Comcast, for example. "Random" omits the ISP filter and lets Evomi\'s pool distribute naturally. "Diversified ISP" is the best of both worlds: it splits your total evenly across every available US ISP (~143 proxies each for 10k across 70 providers), giving you maximum fingerprint variety without manual work.',
+            color: 'border-blue-500/20 bg-blue-500/5',
+          },
+          {
+            tip: 'Use Diversified ISP for maximum bot account variety',
+            detail: 'When running 1 proxy per account across hundreds of tasks, Diversified mode ensures no single ISP block can get all your accounts flagged at once. Major ISPs like Comcast and AT&T look cleaner, but spreading across all providers makes your traffic pattern look like a real city of users.',
             color: 'border-lime-500/20 bg-lime-500/5',
           },
           {

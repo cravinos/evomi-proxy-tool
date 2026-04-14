@@ -250,6 +250,7 @@ export default function Dashboard() {
   const [selState, setSelState]         = useState('');
   const [selCity, setSelCity]           = useState('');
   const [selIsp, setSelIsp]             = useState('');
+  const [diversified, setDiversified]   = useState(false);
 
   // Expert (rp only)
   const [fraudscore, setFraudscore]     = useState('');
@@ -309,10 +310,9 @@ export default function Dashboard() {
     setGenerating(true);
 
     const BATCH = 500;
-    const numBatches = Math.ceil(amount / BATCH);
     const allProxies = [];
 
-    const buildParams = (batchAmount) => {
+    const buildParams = (batchAmount, ispOverride = null) => {
       const p = new URLSearchParams({
         apikey: apiKey,
         product,
@@ -329,7 +329,8 @@ export default function Dashboard() {
         if (name) p.set('region', name.toLowerCase().replace(/\s+/g, '.'));
       }
       if (selCity) p.set('city', selCity.toLowerCase().replace(/\s+/g, '.'));
-      if (selIsp)  p.set('isp', selIsp);
+      const isp = ispOverride ?? selIsp;
+      if (isp) p.set('isp', isp);
       if (product === 'rp') {
         if (fraudscore) p.set('fraudscore', fraudscore);
         if (device)     p.set('device', device);
@@ -342,27 +343,53 @@ export default function Dashboard() {
       return p;
     };
 
-    try {
-      for (let i = 0; i < numBatches; i += 5) {
-        const chunk = [];
-        for (let j = i; j < Math.min(i + 5, numBatches); j++) {
-          const batchAmt = Math.min(BATCH, amount - j * BATCH);
-          chunk.push(fetch(`/api/generate?${buildParams(batchAmt)}`).then(r => r.text()));
-        }
-        const results = await Promise.all(chunk);
-        for (const text of results) {
-          if (!text.trim()) continue;
-          if (text.trim().startsWith('{')) throw new Error(JSON.parse(text).error || 'API error');
-          for (let line of text.split('\n')) {
-            // Strip any protocol prefix: http://, https://, socks5://
-            line = line.replace(/^[\w+.-]+:\/\//i, '').trim();
-            if (!line) continue;
-            // Apply hostname mask
-            if (maskEnabled && maskHost.trim()) {
-              line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
-            }
-            allProxies.push(line);
+    const processResults = (results) => {
+      for (const text of results) {
+        if (!text.trim()) continue;
+        if (text.trim().startsWith('{')) throw new Error(JSON.parse(text).error || 'API error');
+        for (let line of text.split('\n')) {
+          line = line.replace(/^[\w+.-]+:\/\//i, '').trim();
+          if (!line) continue;
+          if (maskEnabled && maskHost.trim()) {
+            line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
           }
+          allProxies.push(line);
+        }
+      }
+    };
+
+    try {
+      if (diversified && !selIsp && isps.length > 0) {
+        // Build a flat job list: each ISP gets an even share, sub-batched at 500
+        const perIsp = Math.ceil(amount / isps.length);
+        const jobs = []; // { ispCode, batchAmt }
+        let remaining = amount;
+        for (const isp of isps) {
+          if (remaining <= 0) break;
+          const ispTotal = Math.min(perIsp, remaining);
+          remaining -= ispTotal;
+          let left = ispTotal;
+          while (left > 0) {
+            jobs.push({ ispCode: isp.code, batchAmt: Math.min(BATCH, left) });
+            left -= BATCH;
+          }
+        }
+        for (let i = 0; i < jobs.length; i += 5) {
+          const chunk = jobs.slice(i, i + 5).map(({ ispCode, batchAmt }) =>
+            fetch(`/api/generate?${buildParams(batchAmt, ispCode)}`).then(r => r.text())
+          );
+          processResults(await Promise.all(chunk));
+        }
+      } else {
+        // Normal generation
+        const numBatches = Math.ceil(amount / BATCH);
+        for (let i = 0; i < numBatches; i += 5) {
+          const chunk = [];
+          for (let j = i; j < Math.min(i + 5, numBatches); j++) {
+            const batchAmt = Math.min(BATCH, amount - j * BATCH);
+            chunk.push(fetch(`/api/generate?${buildParams(batchAmt)}`).then(r => r.text()));
+          }
+          processResults(await Promise.all(chunk));
         }
       }
       setProxies(allProxies);
@@ -371,7 +398,7 @@ export default function Dashboard() {
     } finally {
       setGenerating(false);
     }
-  }, [apiKey, product, amount, sessionType, lifetime, selState, selCity, selIsp, fraudscore, device, latency, adblock, http3, localDns, extended, maskEnabled, maskHost]);
+  }, [apiKey, product, amount, sessionType, lifetime, selState, selCity, selIsp, diversified, isps, fraudscore, device, latency, adblock, http3, localDns, extended, maskEnabled, maskHost]);
 
   const copyAll = async () => {
     if (!proxies.length) return;
@@ -552,7 +579,22 @@ export default function Dashboard() {
                   options={cityOptions.map(c => ({ value: c, label: c }))}
                   placeholder="Any city" />
               )}
-              <IspSelect isps={isps} value={selIsp} onChange={setSelIsp} />
+              <IspSelect isps={isps} value={selIsp} onChange={v => { setSelIsp(v); if (v) setDiversified(false); }} />
+              {!selIsp && isps.length > 0 && (
+                <button
+                  onClick={() => setDiversified(d => !d)}
+                  className={`w-full mt-1 px-3 py-1.5 text-xs font-semibold rounded border transition-colors ${
+                    diversified
+                      ? 'bg-lime-500/10 border-lime-500/40 text-lime-400'
+                      : 'bg-[#111] border-[#1a1a1a] text-gray-600 hover:text-gray-400 hover:border-[#2a2a2a]'
+                  }`}
+                >
+                  {diversified ? '✓ Diversified ISP' : 'Diversified ISP'}
+                  <span className="ml-1.5 text-[10px] font-normal opacity-60">
+                    {diversified ? `~${Math.ceil(amount / isps.length)}/ISP across ${isps.length} providers` : 'evenly spread across all ISPs'}
+                  </span>
+                </button>
+              )}
             </Section>
 
             {isRp && (
@@ -597,8 +639,15 @@ export default function Dashboard() {
             <div className="flex items-center gap-3 mb-4 flex-wrap">
               <button onClick={generate} disabled={!apiKey || generating}
                 className="px-5 py-2 bg-lime-500 hover:bg-lime-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-bold rounded-lg transition-colors">
-                {generating ? 'Generating…' : `Generate ${amount.toLocaleString()} Proxies`}
+                {generating
+                  ? (diversified && !selIsp ? 'Diversifying…' : 'Generating…')
+                  : `Generate ${amount.toLocaleString()} Proxies`}
               </button>
+              {diversified && !selIsp && !generating && (
+                <span className="text-[10px] text-lime-500/70">
+                  Diversified · ~{Math.ceil(amount / (isps.length || 1))}/ISP
+                </span>
+              )}
 
               {proxies.length > 0 && <>
                 <button onClick={copyAll}
