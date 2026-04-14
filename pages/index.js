@@ -311,7 +311,10 @@ export default function Home() {
       if (sessionType === 'sticky') p.set('session', 'sticky');
       if (sessionType === 'hard')   p.set('session', 'hard');
       if (sessionType === 'sticky' && lifetime) p.set('lifetime', lifetime);
-      if (selState) p.set('region', selState.toLowerCase());
+      if (selState) {
+        const stateName = US_STATES.find(s => s.code === selState)?.name;
+        if (stateName) p.set('region', stateName.toLowerCase().replace(/\s+/g, '.'));
+      }
       if (selCity)  p.set('city', selCity.toLowerCase().replace(/\s+/g, '.'));
       if (selIsp)   p.set('isp', selIsp);
       if (product === 'rp') {
@@ -497,9 +500,9 @@ export default function Home() {
                 value={sessionType} onChange={setSessionType} />
               {sessionType === 'sticky' && (
                 <div className="mt-2">
-                  <label className="text-[10px] text-gray-600 block mb-1">Lifetime (minutes, 1–120)</label>
-                  <input type="number" min="1" max="120" value={lifetime}
-                    onChange={e => setLifetime(Math.min(120, Math.max(1, +e.target.value || 1)))}
+                  <label className="text-[10px] text-gray-600 block mb-1">Lifetime (minutes, 1–1440)</label>
+                  <input type="number" min="1" max="1440" value={lifetime}
+                    onChange={e => setLifetime(Math.min(1440, Math.max(1, +e.target.value || 1)))}
                     className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500/50" />
                 </div>
               )}
