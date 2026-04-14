@@ -436,6 +436,8 @@ export default function Dashboard() {
               </span>
             </a>
 
+            <a href="/guide" className="text-xs text-gray-500 hover:text-gray-300 transition-colors no-underline flex-shrink-0">Guide</a>
+
             {/* API Key input */}
             <div className="flex items-center gap-2 flex-1 max-w-md">
               <input

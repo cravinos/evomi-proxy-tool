@@ -63,13 +63,16 @@ export default function Landing() {
                 <span className="text-white"> Resis</span>
               </span>
             </div>
-            <button
-              onClick={() => signIn('discord')}
-              className="flex items-center gap-2 px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              <DiscordIcon />
-              Login with Discord
-            </button>
+            <div className="flex items-center gap-4">
+              <a href="/guide" className="text-sm text-gray-400 hover:text-white transition-colors no-underline">Guide</a>
+              <button
+                onClick={() => signIn('discord')}
+                className="flex items-center gap-2 px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <DiscordIcon />
+                Login with Discord
+              </button>
+            </div>
           </div>
         </nav>
 
