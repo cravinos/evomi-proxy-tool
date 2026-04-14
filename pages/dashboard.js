@@ -264,6 +264,7 @@ export default function Dashboard() {
   const [maskEnabled, setMaskEnabled]   = useState(false);
   const [maskHost, setMaskHost]         = useState('proxy.yourdomain.com');
   const [proxies, setProxies]           = useState([]);
+  const [generating, setGenerating]     = useState(false);
   const [genError, setGenError]         = useState('');
   const [copied, setCopied]             = useState(false);
 
@@ -298,61 +299,77 @@ export default function Dashboard() {
     }
   }, [apiKeyInput]);
 
-  // Generate proxies — build locally using account credentials
-  const generate = useCallback(() => {
-    if (!accountData?.products?.[product]) {
-      setGenError('Product not available');
-      return;
-    }
+  // Generate proxies via Evomi API (format=2), strip protocol prefix
+  const generate = useCallback(async () => {
+    if (!apiKey) return;
     setGenError('');
+    setProxies([]);
+    setGenerating(true);
 
-    const prod = accountData.products[product];
-    const { username, password } = prod;
-    // Use canonical short endpoint from docs (rp.evomi.com / rpc.evomi.com)
-    const endpoint = PRODUCTS.find(p => p.id === product)?.endpoint || prod.endpoint;
-    const port = prod.ports?.http || 1000;
+    const BATCH = 500;
+    const numBatches = Math.ceil(amount / BATCH);
+    const allProxies = [];
 
-    // Build targeting suffix (appended to password)
-    let suffix = '_country-US';
-    if (selState) {
-      const stateName = US_STATES.find(s => s.code === selState)?.name;
-      if (stateName) suffix += `_region-${stateName.toLowerCase().replace(/\s+/g, '.')}`;
-    }
-    if (selCity) suffix += `_city-${selCity.toLowerCase().replace(/\s+/g, '.')}`;
-    if (selIsp)  suffix += `_isp-${selIsp}`;
-
-    if (product === 'rp') {
-      if (fraudscore) suffix += `_fraudscore-${fraudscore}`;
-      if (device)     suffix += `_device-${device}`;
-      if (latency)    suffix += `_latency-${latency}`;
-      if (adblock)    suffix += '_adblock-1';
-      if (http3)      suffix += '_http3-1';
-      if (localDns)   suffix += '_localdns-1';
-      if (extended)   suffix += '_extended-1';
-    }
-
-    const result = [];
-    for (let i = 0; i < amount; i++) {
-      let pass = password + suffix;
-
-      if (sessionType === 'sticky') {
-        pass += `_session-${randomId(9)}`;
-        if (lifetime) pass += `_lifetime-${lifetime}`;
-      } else if (sessionType === 'hard') {
-        pass += `_hardsession-${randomId(9)}`;
+    const buildParams = (batchAmount) => {
+      const p = new URLSearchParams({
+        apikey: apiKey,
+        product,
+        protocol: 'http',
+        amount: batchAmount,
+        format: '2',        // returns: http://host:port:user:pass
+        countries: 'US',
+      });
+      if (sessionType === 'sticky') p.set('session', 'sticky');
+      if (sessionType === 'hard')   p.set('session', 'hard');
+      if (sessionType === 'sticky' && lifetime) p.set('lifetime', lifetime);
+      if (selState) {
+        const name = US_STATES.find(s => s.code === selState)?.name;
+        if (name) p.set('region', name.toLowerCase().replace(/\s+/g, '.'));
       }
-
-      // Correct format: user:pass@host:port  (standard proxy URL auth format)
-      let line = `${username}:${pass}@${endpoint}:${port}`;
-
-      if (maskEnabled && maskHost.trim()) {
-        line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
+      if (selCity) p.set('city', selCity.toLowerCase().replace(/\s+/g, '.'));
+      if (selIsp)  p.set('isp', selIsp);
+      if (product === 'rp') {
+        if (fraudscore) p.set('fraudscore', fraudscore);
+        if (device)     p.set('device', device);
+        if (latency)    p.set('latency', latency);
+        if (adblock)    p.set('adblock', 'true');
+        if (http3)      p.set('http3', '1');
+        if (localDns)   p.set('localdns', '1');
+        if (extended)   p.set('extended', '1');
       }
+      return p;
+    };
 
-      result.push(line);
+    try {
+      for (let i = 0; i < numBatches; i += 5) {
+        const chunk = [];
+        for (let j = i; j < Math.min(i + 5, numBatches); j++) {
+          const batchAmt = Math.min(BATCH, amount - j * BATCH);
+          chunk.push(fetch(`/api/generate?${buildParams(batchAmt)}`).then(r => r.text()));
+        }
+        const results = await Promise.all(chunk);
+        for (const text of results) {
+          if (!text.trim()) continue;
+          if (text.trim().startsWith('{')) throw new Error(JSON.parse(text).error || 'API error');
+          for (let line of text.split('\n')) {
+            // Strip any protocol prefix: http://, https://, socks5://
+            line = line.replace(/^[\w+.-]+:\/\//i, '').trim();
+            if (!line) continue;
+            // Apply hostname mask
+            if (maskEnabled && maskHost.trim()) {
+              line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
+            }
+            allProxies.push(line);
+          }
+        }
+      }
+      setProxies(allProxies);
+    } catch (e) {
+      setGenError(e.message);
+    } finally {
+      setGenerating(false);
     }
-    setProxies(result);
-  }, [accountData, product, amount, sessionType, lifetime, selState, selCity, selIsp, fraudscore, device, latency, adblock, http3, localDns, extended, maskEnabled, maskHost]);
+  }, [apiKey, product, amount, sessionType, lifetime, selState, selCity, selIsp, fraudscore, device, latency, adblock, http3, localDns, extended, maskEnabled, maskHost]);
 
   const copyAll = async () => {
     if (!proxies.length) return;
@@ -558,9 +575,9 @@ export default function Dashboard() {
 
             {/* Action bar */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <button onClick={generate} disabled={!accountData || !apiKey}
+              <button onClick={generate} disabled={!apiKey || generating}
                 className="px-5 py-2 bg-lime-500 hover:bg-lime-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-bold rounded-lg transition-colors">
-                Generate {amount.toLocaleString()} Proxies
+                {generating ? 'Generating…' : `Generate ${amount.toLocaleString()} Proxies`}
               </button>
 
               {proxies.length > 0 && <>
@@ -612,7 +629,7 @@ export default function Dashboard() {
               <div className="flex-1 flex flex-col bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl overflow-hidden">
                 <div className="flex items-center gap-3 px-4 py-2 border-b border-[#1a1a1a] bg-[#0f0f0f]">
                   <span className="text-[10px] text-gray-700 uppercase tracking-widest">
-                    user:pass@host:port
+                    host:port:user:pass
                   </span>
                   <span className="ml-auto text-[10px] text-lime-600">{proxies.length.toLocaleString()} proxies</span>
                 </div>
