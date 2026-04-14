@@ -252,12 +252,14 @@ export default function Dashboard() {
   const [selIsp, setSelIsp]             = useState('');
   const [diversified, setDiversified]   = useState(false);
 
-  // Expert (rp only)
+  // rp (Premium) options
+  const [selMode, setSelMode]           = useState('');   // '' | 'speed' | 'quality'
+  const [adblock, setAdblock]           = useState(false);
+
+  // rpc (Core) expert settings
   const [fraudscore, setFraudscore]     = useState('');
   const [device, setDevice]             = useState('');
   const [latency, setLatency]           = useState('');
-  const [adblock, setAdblock]           = useState(false);
-  const [http3, setHttp3]               = useState(false);
   const [localDns, setLocalDns]         = useState(false);
   const [extended, setExtended]         = useState(false);
 
@@ -312,18 +314,24 @@ export default function Dashboard() {
     const BATCH = 500;
     const allProxies = [];
 
-    // Build password suffix for rpc expert settings (appended post-generation)
-    // extended cannot combine with other expert filters per Evomi docs
-    const expertSuffix = (() => {
-      if (product !== 'rpc') return '';
-      if (extended) return '_extended-1';
-      let s = '';
-      if (fraudscore) s += `_fraudscore-${fraudscore}`;
-      if (device)     s += `_device-${device}`;
-      if (latency)    s += `_latency-${latency}`;
-      if (http3)      s += '_http3-1';
-      if (localDns)   s += '_localdns-1';
-      return s;
+    // Build password suffix appended post-generation
+    // rp: mode-speed / mode-quality
+    // rpc: expert settings (fraudscore, device, latency, localdns, extended)
+    //      extended cannot combine with other expert filters per Evomi docs
+    const passwordSuffix = (() => {
+      if (product === 'rp') {
+        return selMode ? `_mode-${selMode}` : '';
+      }
+      if (product === 'rpc') {
+        if (extended) return '_extended-1';
+        let s = '';
+        if (fraudscore) s += `_fraudscore-${fraudscore}`;
+        if (device)     s += `_device-${device}`;
+        if (latency)    s += `_latency-${latency}`;
+        if (localDns)   s += '_localdns-1';
+        return s;
+      }
+      return '';
     })();
 
     const buildParams = (batchAmount, ispOverride = null) => {
@@ -357,8 +365,8 @@ export default function Dashboard() {
         for (let line of text.split('\n')) {
           line = line.replace(/^[\w+.-]+:\/\//i, '').trim();
           if (!line) continue;
-          // Append rpc expert suffixes to the password (4th field: host:port:user:pass)
-          if (expertSuffix) {
+          // Append password suffixes (4th field: host:port:user:pass)
+          if (passwordSuffix) {
             const parts = line.split(':');
             if (parts.length >= 4) {
               parts[3] = parts[3] + expertSuffix;
@@ -413,7 +421,7 @@ export default function Dashboard() {
     } finally {
       setGenerating(false);
     }
-  }, [apiKey, product, amount, sessionType, lifetime, selState, selCity, selIsp, diversified, isps, fraudscore, device, latency, adblock, http3, localDns, extended, maskEnabled, maskHost]);
+  }, [apiKey, product, amount, sessionType, lifetime, selState, selCity, selIsp, diversified, isps, selMode, adblock, fraudscore, device, latency, localDns, extended, maskEnabled, maskHost]);
 
   const copyAll = async () => {
     if (!proxies.length) return;
@@ -614,8 +622,24 @@ export default function Dashboard() {
             </Section>
 
             {isRp && (
-              <Section title="Options" note="Premium">
-                <Toggle checked={adblock} onChange={setAdblock} label="Ad Blocking" />
+              <Section title="Pool Mode" note="Premium only">
+                <div className="space-y-2">
+                  <PillGroup
+                    options={[
+                      { id: '',        label: 'Standard' },
+                      { id: 'speed',   label: 'Speed' },
+                      { id: 'quality', label: 'Quality' },
+                    ]}
+                    value={selMode}
+                    onChange={setSelMode}
+                  />
+                  <p className="text-[10px] text-gray-700 leading-snug">
+                    {selMode === 'speed'   && 'Fastest IPs. Smaller pool. Best for time-sensitive tasks.'}
+                    {selMode === 'quality' && 'Highest quality IPs. Lowest block rate. Best for anti-bot sites.'}
+                    {selMode === ''        && 'All IPs. Largest pool. Best when targets block IPs fast.'}
+                  </p>
+                  <Toggle checked={adblock} onChange={setAdblock} label="Ad Blocking" />
+                </div>
               </Section>
             )}
 
@@ -638,9 +662,8 @@ export default function Dashboard() {
                     placeholder="Any" value={latency} onChange={e => setLatency(e.target.value)}
                     disabled={extended} />
                   <div className="space-y-2 pt-1">
-                    <Toggle checked={http3}    onChange={v => { if (!extended) setHttp3(v); }}    label="HTTP3 / QUIC"    disabled={extended} />
-                    <Toggle checked={localDns} onChange={v => { if (!extended) setLocalDns(v); }} label="Local DNS"       disabled={extended} />
-                    <Toggle checked={extended} onChange={v => { setExtended(v); if (v) { setFraudscore(''); setDevice(''); setLatency(''); setHttp3(false); setLocalDns(false); } }} label="Extended Pool" />
+                    <Toggle checked={localDns} onChange={v => { if (!extended) setLocalDns(v); }} label="Local DNS" disabled={extended} />
+                    <Toggle checked={extended} onChange={v => { setExtended(v); if (v) { setFraudscore(''); setDevice(''); setLatency(''); setLocalDns(false); } }} label="Extended Pool" />
                   </div>
                 </div>
               </Section>
