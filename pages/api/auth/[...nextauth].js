@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import DiscordProvider from 'next-auth/providers/discord';
 
-export default NextAuth({
+export const authOptions = {
   providers: [
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID,
@@ -9,20 +9,20 @@ export default NextAuth({
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
-  pages: {
-    signIn: '/',
-  },
+  pages: { signIn: '/' },
   callbacks: {
-    async session({ session, token }) {
-      session.user.id = token.sub;
-      session.user.discordId = token.discordId;
-      return session;
-    },
     async jwt({ token, account, profile }) {
-      if (account) {
-        token.discordId = profile?.id;
+      if (account && profile) {
+        // Store the actual Discord username (not display name)
+        token.discordUsername = profile.username;
       }
       return token;
     },
+    async session({ session, token }) {
+      session.user.discordUsername = token.discordUsername;
+      return session;
+    },
   },
-});
+};
+
+export default NextAuth(authOptions);

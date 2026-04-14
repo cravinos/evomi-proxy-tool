@@ -1,7 +1,10 @@
 import { useSession, signOut } from 'next-auth/react';
+import { getServerSession } from 'next-auth/next';
 import { useRouter } from 'next/router';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
+import { authOptions } from './api/auth/[...nextauth]';
+import { isAllowed } from '../lib/whitelist';
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 
@@ -624,4 +627,13 @@ export default function Dashboard() {
       </div>
     </>
   );
+}
+
+export async function getServerSideProps(context) {
+  const session = await getServerSession(context.req, context.res, authOptions);
+  if (!session) return { redirect: { destination: '/', permanent: false } };
+  if (!isAllowed(session.user?.discordUsername)) {
+    return { redirect: { destination: '/waitlist', permanent: false } };
+  }
+  return { props: {} };
 }
