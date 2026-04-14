@@ -229,6 +229,10 @@ export default function Dashboard() {
     if (status === 'unauthenticated') router.replace('/');
   }, [status, router]);
 
+  const [apiKeyInput, setApiKeyInput]   = useState('');
+  const [apiKey, setApiKey]             = useState('');
+  const [connecting, setConnecting]     = useState(false);
+  const [connectError, setConnectError] = useState('');
   const [accountData, setAccountData]   = useState(null);
   const [isps, setIsps]                 = useState([]);
   const [loadError, setLoadError]       = useState('');
@@ -260,16 +264,22 @@ export default function Dashboard() {
   const [genError, setGenError]         = useState('');
   const [copied, setCopied]             = useState(false);
 
-  // Load account + settings on mount
-  useEffect(() => {
-    if (status !== 'authenticated') return;
-    Promise.all([
-      fetch('/api/account').then(r => r.json()),
-      fetch('/api/settings').then(r => r.json()),
-    ]).then(([acc, settings]) => {
-      if (acc.error) { setLoadError(acc.error); return; }
+  const connect = useCallback(async () => {
+    const key = apiKeyInput.trim();
+    if (!key) return;
+    setConnecting(true);
+    setConnectError('');
+    setAccountData(null);
+    try {
+      const [accRes, setRes] = await Promise.all([
+        fetch(`/api/account?apikey=${encodeURIComponent(key)}`),
+        fetch(`/api/settings?apikey=${encodeURIComponent(key)}`),
+      ]);
+      const acc = await accRes.json();
+      if (!accRes.ok || acc.error) throw new Error(acc.error || 'Invalid API key');
       setAccountData(acc);
-      // Parse ISPs
+      setApiKey(key);
+      const settings = await setRes.json();
       const src = settings?.rp || settings?.rpc || {};
       if (src.isps) {
         const list = Object.entries(src.isps).map(([code, info]) => ({
@@ -278,8 +288,12 @@ export default function Dashboard() {
         })).sort((a, b) => a.label.localeCompare(b.label));
         setIsps(list);
       }
-    }).catch(e => setLoadError(e.message));
-  }, [status]);
+    } catch (e) {
+      setConnectError(e.message);
+    } finally {
+      setConnecting(false);
+    }
+  }, [apiKeyInput]);
 
   // Generate proxies — build locally using account credentials
   const generate = useCallback(() => {
@@ -384,6 +398,28 @@ export default function Dashboard() {
               </span>
             </a>
 
+            {/* API Key input */}
+            <div className="flex items-center gap-2 flex-1 max-w-md">
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={e => setApiKeyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && connect()}
+                placeholder="Evomi API key…"
+                className="flex-1 bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-lime-500/40 transition-colors"
+              />
+              <button onClick={connect} disabled={connecting || !apiKeyInput.trim()}
+                className="px-3 py-1.5 bg-lime-500 hover:bg-lime-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-xs font-bold rounded transition-colors whitespace-nowrap">
+                {connecting ? '…' : 'Connect'}
+              </button>
+              {connectError && <span className="text-xs text-red-400 whitespace-nowrap">{connectError}</span>}
+              {accountData && !connectError && (
+                <span className="text-xs text-lime-500 flex items-center gap-1 whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-lime-500 inline-block" /> Connected
+                </span>
+              )}
+            </div>
+
             {/* Balances */}
             {accountData && (
               <div className="flex items-center gap-4 text-[11px]">
@@ -398,8 +434,6 @@ export default function Dashboard() {
                 })}
               </div>
             )}
-
-            {loadError && <span className="text-xs text-red-400">{loadError}</span>}
 
             <div className="ml-auto flex items-center gap-3">
               {session?.user?.image && (
@@ -521,7 +555,7 @@ export default function Dashboard() {
 
             {/* Action bar */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <button onClick={generate} disabled={!accountData}
+              <button onClick={generate} disabled={!accountData || !apiKey}
                 className="px-5 py-2 bg-lime-500 hover:bg-lime-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-bold rounded-lg transition-colors">
                 Generate {amount.toLocaleString()} Proxies
               </button>
@@ -553,13 +587,16 @@ export default function Dashboard() {
               </div>
             )}
 
-            {!accountData && !loadError && (
+            {!apiKey && (
               <div className="flex-1 flex items-center justify-center">
-                <p className="text-sm text-gray-700 animate-pulse">Loading account…</p>
+                <div className="text-center space-y-2">
+                  <div className="text-4xl">🎅</div>
+                  <p className="text-sm text-gray-700">Enter your Evomi API key above to get started</p>
+                </div>
               </div>
             )}
 
-            {accountData && proxies.length === 0 && !genError && (
+            {apiKey && proxies.length === 0 && !genError && (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center space-y-2">
                   <div className="text-4xl">🎅</div>
