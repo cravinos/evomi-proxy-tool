@@ -122,14 +122,14 @@ function Section({ title, note, children }) {
   );
 }
 
-function Toggle({ checked, onChange, label }) {
+function Toggle({ checked, onChange, label, disabled }) {
   return (
-    <label className="flex items-center gap-2 cursor-pointer group select-none">
-      <div onClick={() => onChange(!checked)}
+    <label className={`flex items-center gap-2 select-none ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer group'}`}>
+      <div onClick={() => !disabled && onChange(!checked)}
         className={`relative w-8 h-4 rounded-full transition-colors ${checked ? 'bg-lime-500' : 'bg-[#2a2a2a]'}`}>
         <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
       </div>
-      <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">{label}</span>
+      <span className={`text-xs transition-colors ${disabled ? 'text-gray-600' : 'text-gray-400 group-hover:text-gray-300'}`}>{label}</span>
     </label>
   );
 }
@@ -151,11 +151,11 @@ function PillGroup({ options, value, onChange }) {
   );
 }
 
-function Select({ label, value, onChange, options, placeholder = 'Any' }) {
+function Select({ label, value, onChange, options, placeholder = 'Any', disabled }) {
   return (
-    <div>
+    <div className={disabled ? 'opacity-40 pointer-events-none' : ''}>
       {label && <label className="text-[10px] text-gray-600 block mb-1">{label}</label>}
-      <select value={value} onChange={e => onChange(e.target.value)}
+      <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
         className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-lime-500/40 transition-colors appearance-none cursor-pointer">
         <option value="">{placeholder}</option>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -164,12 +164,12 @@ function Select({ label, value, onChange, options, placeholder = 'Any' }) {
   );
 }
 
-function Input({ label, ...props }) {
+function Input({ label, disabled, ...props }) {
   return (
-    <div>
+    <div className={disabled ? 'opacity-40' : ''}>
       {label && <label className="text-[10px] text-gray-600 block mb-1">{label}</label>}
-      <input {...props}
-        className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-lime-500/40 transition-colors" />
+      <input {...props} disabled={disabled}
+        className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-lime-500/40 transition-colors disabled:cursor-not-allowed" />
     </div>
   );
 }
@@ -312,6 +312,20 @@ export default function Dashboard() {
     const BATCH = 500;
     const allProxies = [];
 
+    // Build password suffix for rpc expert settings (appended post-generation)
+    // extended cannot combine with other expert filters per Evomi docs
+    const expertSuffix = (() => {
+      if (product !== 'rpc') return '';
+      if (extended) return '_extended-1';
+      let s = '';
+      if (fraudscore) s += `_fraudscore-${fraudscore}`;
+      if (device)     s += `_device-${device}`;
+      if (latency)    s += `_latency-${latency}`;
+      if (http3)      s += '_http3-1';
+      if (localDns)   s += '_localdns-1';
+      return s;
+    })();
+
     const buildParams = (batchAmount, ispOverride = null) => {
       const p = new URLSearchParams({
         apikey: apiKey,
@@ -331,15 +345,8 @@ export default function Dashboard() {
       if (selCity) p.set('city', selCity.toLowerCase().replace(/\s+/g, '.'));
       const isp = ispOverride ?? selIsp;
       if (isp) p.set('isp', isp);
-      if (product === 'rp') {
-        if (fraudscore) p.set('fraudscore', fraudscore);
-        if (device)     p.set('device', device);
-        if (latency)    p.set('latency', latency);
-        if (adblock)    p.set('adblock', 'true');
-        if (http3)      p.set('http3', '1');
-        if (localDns)   p.set('localdns', '1');
-        if (extended)   p.set('extended', '1');
-      }
+      // adblock is a real generate query param for rp (Premium) only
+      if (product === 'rp' && adblock) p.set('adblock', 'true');
       return p;
     };
 
@@ -350,6 +357,14 @@ export default function Dashboard() {
         for (let line of text.split('\n')) {
           line = line.replace(/^[\w+.-]+:\/\//i, '').trim();
           if (!line) continue;
+          // Append rpc expert suffixes to the password (4th field: host:port:user:pass)
+          if (expertSuffix) {
+            const parts = line.split(':');
+            if (parts.length >= 4) {
+              parts[3] = parts[3] + expertSuffix;
+              line = parts.join(':');
+            }
+          }
           if (maskEnabled && maskHost.trim()) {
             line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
           }
@@ -435,7 +450,8 @@ export default function Dashboard() {
   };
 
   const getBalance = pid => accountData?.products?.[pid]?.balance_mb ?? null;
-  const isRp = product === 'rp';
+  const isRp  = product === 'rp';
+  const isRpc = product === 'rpc';
   const curProd = PRODUCTS.find(p => p.id === product);
   const cityOptions = selState ? (US_CITIES[selState] || []) : [];
 
@@ -598,20 +614,33 @@ export default function Dashboard() {
             </Section>
 
             {isRp && (
-              <Section title="Expert Settings" note="Premium only">
+              <Section title="Options" note="Premium">
+                <Toggle checked={adblock} onChange={setAdblock} label="Ad Blocking" />
+              </Section>
+            )}
+
+            {isRpc && (
+              <Section title="Expert Settings" note="Core only">
                 <div className="space-y-2">
+                  {extended && (
+                    <p className="text-[10px] text-yellow-500/80 bg-yellow-500/5 border border-yellow-500/20 rounded px-2 py-1.5 leading-snug">
+                      Extended pool cannot combine with other expert filters.
+                    </p>
+                  )}
                   <Input label="Max Fraud Score (0–100)" type="number" min="0" max="100"
-                    placeholder="Any" value={fraudscore} onChange={e => setFraudscore(e.target.value)} />
+                    placeholder="Any" value={fraudscore} onChange={e => setFraudscore(e.target.value)}
+                    disabled={extended} />
                   <Select label="Device Type" value={device} onChange={setDevice}
                     options={DEVICES.filter(d => d.code).map(d => ({ value: d.code, label: d.label }))}
-                    placeholder="Any device" />
+                    placeholder="Any device"
+                    disabled={extended} />
                   <Input label="Max Latency (ms)" type="number" min="1"
-                    placeholder="Any" value={latency} onChange={e => setLatency(e.target.value)} />
+                    placeholder="Any" value={latency} onChange={e => setLatency(e.target.value)}
+                    disabled={extended} />
                   <div className="space-y-2 pt-1">
-                    <Toggle checked={adblock}  onChange={setAdblock}  label="Ad Blocking" />
-                    <Toggle checked={http3}    onChange={setHttp3}    label="HTTP3 / QUIC" />
-                    <Toggle checked={localDns} onChange={setLocalDns} label="Local DNS" />
-                    <Toggle checked={extended} onChange={setExtended} label="Extended Pool" />
+                    <Toggle checked={http3}    onChange={v => { if (!extended) setHttp3(v); }}    label="HTTP3 / QUIC"    disabled={extended} />
+                    <Toggle checked={localDns} onChange={v => { if (!extended) setLocalDns(v); }} label="Local DNS"       disabled={extended} />
+                    <Toggle checked={extended} onChange={v => { setExtended(v); if (v) { setFraudscore(''); setDevice(''); setLatency(''); setHttp3(false); setLocalDns(false); } }} label="Extended Pool" />
                   </div>
                 </div>
               </Section>
