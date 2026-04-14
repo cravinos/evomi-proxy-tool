@@ -100,6 +100,12 @@ const DEVICES = [
 
 function fmt(n) { return n?.toLocaleString(undefined, { maximumFractionDigits: 1 }) ?? '—'; }
 
+// Generates a random uppercase alphanumeric ID (matches Evomi's session ID format)
+function randomId(len) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
 function Section({ title, note, children }) {
   return (
     <div className="space-y-2">
@@ -241,10 +247,8 @@ export default function Home() {
 
   // Output
   const [proxies, setProxies]         = useState([]);
-  const [generating, setGenerating]   = useState(false);
   const [genError, setGenError]       = useState('');
   const [copied, setCopied]           = useState(false);
-  const [progress, setProgress]       = useState({ done: 0, total: 0 });
 
   // ── Connect ───────────────────────────────────────────────────────────────
 
@@ -286,87 +290,67 @@ export default function Home() {
     }
   };
 
-  // ── Generate ──────────────────────────────────────────────────────────────
+  // ── Generate — build proxy strings locally from account credentials ─────────
 
-  const generate = useCallback(async () => {
-    if (!apiKey) return;
-    setGenerating(true);
+  const generate = useCallback(() => {
+    if (!accountData?.products?.[product]) {
+      setGenError('Product not available for this account');
+      return;
+    }
+
     setGenError('');
     setProxies([]);
 
-    const BATCH = 500;
-    const numBatches = Math.ceil(amount / BATCH);
-    setProgress({ done: 0, total: numBatches });
+    const prod = accountData.products[product];
+    const { username, password } = prod;
+    const endpoint = prod.endpoint || PRODUCTS.find(p => p.id === product)?.endpoint;
+    const port = prod.ports?.http || 1000;
 
-    const buildParams = (batchAmount) => {
-      const p = new URLSearchParams({
-        apikey: apiKey,
-        product,
-        protocol: 'http',
-        amount: batchAmount,
-        format: '2',            // host:port:user:pass
-        prepend_protocol: 'false',
-        countries: 'US',
-      });
-      if (sessionType === 'sticky') p.set('session', 'sticky');
-      if (sessionType === 'hard')   p.set('session', 'hard');
-      if (sessionType === 'sticky' && lifetime) p.set('lifetime', lifetime);
-      if (selState) {
-        const stateName = US_STATES.find(s => s.code === selState)?.name;
-        if (stateName) p.set('region', stateName.toLowerCase().replace(/\s+/g, '.'));
-      }
-      if (selCity)  p.set('city', selCity.toLowerCase().replace(/\s+/g, '.'));
-      if (selIsp)   p.set('isp', selIsp);
-      if (product === 'rp') {
-        if (fraudscore) p.set('fraudscore', fraudscore);
-        if (device)     p.set('device', device);
-        if (latency)    p.set('latency', latency);
-        if (adblock)    p.set('adblock', 'true');
-        if (http3)      p.set('http3', '1');
-        if (localDns)   p.set('localdns', '1');
-        if (extended)   p.set('extended', '1');
-      }
-      return p;
-    };
+    // Build the targeting suffix appended to the password
+    let suffix = '_country-US';
 
-    try {
-      const allProxies = [];
-
-      // Fire batches in groups of 5 to avoid overwhelming the API
-      for (let i = 0; i < numBatches; i += 5) {
-        const chunk = [];
-        for (let j = i; j < Math.min(i + 5, numBatches); j++) {
-          const batchAmount = Math.min(BATCH, amount - j * BATCH);
-          chunk.push(
-            fetch(`/api/generate?${buildParams(batchAmount)}`).then(r => r.text())
-          );
-        }
-        const results = await Promise.all(chunk);
-        for (const text of results) {
-          if (text.trim().startsWith('{')) throw new Error(JSON.parse(text).error || 'Generation failed');
-          const lines = text.split('\n').filter(l => l.trim());
-          for (let line of lines) {
-            // Always strip any accidental http:// prefix
-            line = line.replace(/^https?:\/\//i, '').trim();
-            // Mask hostname (replace any *.evomi.com)
-            if (maskEnabled && maskHost.trim()) {
-              line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
-            }
-            if (line) allProxies.push(line);
-          }
-        }
-        setProgress(p => ({ ...p, done: Math.min(i + 5, numBatches) }));
-      }
-
-      setProxies(allProxies);
-    } catch (e) {
-      setGenError(e.message);
-    } finally {
-      setGenerating(false);
-      setProgress({ done: 0, total: 0 });
+    if (selState) {
+      const stateName = US_STATES.find(s => s.code === selState)?.name;
+      if (stateName) suffix += `_region-${stateName.toLowerCase().replace(/\s+/g, '.')}`;
     }
+    if (selCity) suffix += `_city-${selCity.toLowerCase().replace(/\s+/g, '.')}`;
+    if (selIsp)  suffix += `_isp-${selIsp}`;
+
+    // Expert (Premium Residential only)
+    if (product === 'rp') {
+      if (fraudscore)  suffix += `_fraudscore-${fraudscore}`;
+      if (device)      suffix += `_device-${device}`;
+      if (latency)     suffix += `_latency-${latency}`;
+      if (adblock)     suffix += '_adblock-1';
+      if (http3)       suffix += '_http3-1';
+      if (localDns)    suffix += '_localdns-1';
+      if (extended)    suffix += '_extended-1';
+    }
+
+    const result = [];
+    for (let i = 0; i < amount; i++) {
+      let pass = password + suffix;
+
+      if (sessionType === 'sticky') {
+        pass += `_session-${randomId(9)}`;
+        if (lifetime) pass += `_lifetime-${lifetime}`;
+      } else if (sessionType === 'hard') {
+        pass += `_hardsession-${randomId(9)}`;
+      }
+
+      let line = `${endpoint}:${port}:${username}:${pass}`;
+
+      // Mask hostname
+      if (maskEnabled && maskHost.trim()) {
+        line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
+      }
+
+      result.push(line);
+    }
+
+    setProxies(result);
   }, [
-    apiKey, product, amount, sessionType, lifetime,
+    accountData, product, amount, sessionType, lifetime,
     selState, selCity, selIsp,
     fraudscore, device, latency, adblock, http3, localDns, extended,
     maskEnabled, maskHost,
@@ -593,17 +577,9 @@ export default function Home() {
 
             {/* Action bar */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <button onClick={generate} disabled={!apiKey || generating}
+              <button onClick={generate} disabled={!apiKey}
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm rounded font-medium transition-colors">
-                {generating ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity=".3"/>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                    </svg>
-                    {progress.total > 0 ? `Batch ${progress.done}/${progress.total}…` : 'Generating…'}
-                  </span>
-                ) : `Generate ${amount.toLocaleString()} Proxies`}
+                Generate {amount.toLocaleString()} Proxies
               </button>
 
               {proxies.length > 0 && <>
@@ -644,7 +620,7 @@ export default function Home() {
               </div>
             )}
 
-            {apiKey && proxies.length === 0 && !generating && !genError && (
+            {apiKey && proxies.length === 0 && !genError && (
               <div className="flex-1 flex items-center justify-center">
                 <p className="text-sm text-gray-700">Configure settings and click Generate</p>
               </div>
@@ -659,14 +635,6 @@ export default function Home() {
                 <textarea readOnly value={proxies.join('\n')}
                   className="flex-1 w-full bg-transparent px-4 py-3 text-xs text-gray-300 resize-none focus:outline-none leading-5 font-mono"
                   spellCheck={false} />
-              </div>
-            )}
-
-            {generating && proxies.length === 0 && (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-xs text-gray-600 animate-pulse">
-                  {progress.total > 0 ? `Batch ${progress.done} of ${progress.total}…` : 'Starting…'}
-                </p>
               </div>
             )}
 
