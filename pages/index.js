@@ -117,28 +117,6 @@ export default function Landing() {
               <span className="text-gray-600 text-sm">Login with Discord · No credit card</span>
             </div>
 
-            {/* Proxy preview */}
-            <div className="mt-16 mx-auto max-w-2xl bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl overflow-hidden text-left">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1a1a1a] bg-[#0f0f0f]">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
-                <span className="w-2.5 h-2.5 rounded-full bg-lime-500/60" />
-                <span className="text-[10px] text-gray-600 ml-2 font-mono">proxies.txt</span>
-              </div>
-              <div className="px-4 py-4 space-y-1.5 font-mono text-[11px]">
-                {[
-                  'biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_region-california@rp.evomi.com:1000',
-                  'biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_region-texas@rp.evomi.com:1000',
-                  'biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_session-AB3K7XY9@rp.evomi.com:1000',
-                ].map((p, i) => (
-                  <div key={i} className="text-gray-500 truncate">
-                    <span className="text-lime-600/70 select-none">{i + 1}  </span>
-                    {p}
-                  </div>
-                ))}
-                <div className="text-gray-700 text-[10px] pt-1">… 9,997 more proxies</div>
-              </div>
-            </div>
           </div>
         </section>
 
