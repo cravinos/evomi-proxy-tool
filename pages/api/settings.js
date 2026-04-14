@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
-  const { apikey } = req.query;
-  if (!apikey) return res.status(400).json({ error: 'Missing API key' });
+  const apikey = process.env.EVOMI_API_KEY;
+  if (!apikey) return res.status(500).json({ error: 'EVOMI_API_KEY not configured' });
   try {
     const r = await fetch('https://api.evomi.com/public/settings', {
       headers: { 'x-apikey': apikey },

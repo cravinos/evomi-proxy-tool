@@ -1,646 +1,206 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { signIn, useSession } from 'next-auth/react';
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
 import Head from 'next/head';
 
-// ─── Static data ─────────────────────────────────────────────────────────────
-
-const PRODUCTS = [
-  { id: 'rp',  label: 'Premium Residential', endpoint: 'premium-residential.evomi.com', port: 1000 },
-  { id: 'rpc', label: 'Core Residential',    endpoint: 'core-residential.evomi.com',    port: 1000 },
+const FEATURES = [
+  {
+    icon: '🌎',
+    title: 'Premium US Residential',
+    desc: 'Real residential IPs across all 50 states. Undetectable, clean, and battle-tested.',
+  },
+  {
+    icon: '📍',
+    title: 'State & City Targeting',
+    desc: 'Pin your proxies to any US state or city. Granular geo-control built right in.',
+  },
+  {
+    icon: '⚡',
+    title: 'Instant Generation',
+    desc: 'Generate up to 10,000 proxies in seconds. Copy, export, and deploy immediately.',
+  },
+  {
+    icon: '🔒',
+    title: 'Sticky Sessions',
+    desc: 'Keep the same IP for up to 24 hours with sticky or hard session support.',
+  },
+  {
+    icon: '🎯',
+    title: 'ISP Targeting',
+    desc: 'Choose from 3,000+ ISPs including Comcast, AT&T, Verizon, and Spectrum.',
+  },
+  {
+    icon: '🛡️',
+    title: 'Expert Filters',
+    desc: 'Filter by fraud score, device type, latency, and more for maximum success rate.',
+  },
 ];
 
-const US_STATES = [
-  { code: 'AL', name: 'Alabama' },        { code: 'AK', name: 'Alaska' },
-  { code: 'AZ', name: 'Arizona' },        { code: 'AR', name: 'Arkansas' },
-  { code: 'CA', name: 'California' },     { code: 'CO', name: 'Colorado' },
-  { code: 'CT', name: 'Connecticut' },    { code: 'DE', name: 'Delaware' },
-  { code: 'FL', name: 'Florida' },        { code: 'GA', name: 'Georgia' },
-  { code: 'HI', name: 'Hawaii' },         { code: 'ID', name: 'Idaho' },
-  { code: 'IL', name: 'Illinois' },       { code: 'IN', name: 'Indiana' },
-  { code: 'IA', name: 'Iowa' },           { code: 'KS', name: 'Kansas' },
-  { code: 'KY', name: 'Kentucky' },       { code: 'LA', name: 'Louisiana' },
-  { code: 'ME', name: 'Maine' },          { code: 'MD', name: 'Maryland' },
-  { code: 'MA', name: 'Massachusetts' },  { code: 'MI', name: 'Michigan' },
-  { code: 'MN', name: 'Minnesota' },      { code: 'MS', name: 'Mississippi' },
-  { code: 'MO', name: 'Missouri' },       { code: 'MT', name: 'Montana' },
-  { code: 'NE', name: 'Nebraska' },       { code: 'NV', name: 'Nevada' },
-  { code: 'NH', name: 'New Hampshire' },  { code: 'NJ', name: 'New Jersey' },
-  { code: 'NM', name: 'New Mexico' },     { code: 'NY', name: 'New York' },
-  { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
-  { code: 'OH', name: 'Ohio' },           { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon' },         { code: 'PA', name: 'Pennsylvania' },
-  { code: 'RI', name: 'Rhode Island' },   { code: 'SC', name: 'South Carolina' },
-  { code: 'SD', name: 'South Dakota' },   { code: 'TN', name: 'Tennessee' },
-  { code: 'TX', name: 'Texas' },          { code: 'UT', name: 'Utah' },
-  { code: 'VT', name: 'Vermont' },        { code: 'VA', name: 'Virginia' },
-  { code: 'WA', name: 'Washington' },     { code: 'WV', name: 'West Virginia' },
-  { code: 'WI', name: 'Wisconsin' },      { code: 'WY', name: 'Wyoming' },
-];
-
-const US_CITIES = {
-  AL: ['Birmingham','Montgomery','Huntsville','Mobile','Tuscaloosa'],
-  AK: ['Anchorage','Fairbanks','Juneau','Sitka','Ketchikan'],
-  AZ: ['Phoenix','Tucson','Mesa','Chandler','Scottsdale','Tempe','Gilbert','Glendale'],
-  AR: ['Little Rock','Fort Smith','Fayetteville','Springdale','Jonesboro'],
-  CA: ['Los Angeles','San Francisco','San Diego','San Jose','Sacramento','Fresno','Oakland','Long Beach','Bakersfield','Anaheim','Santa Ana','Riverside','Stockton','Irvine','Chula Vista'],
-  CO: ['Denver','Colorado Springs','Aurora','Fort Collins','Lakewood','Thornton','Arvada','Westminster'],
-  CT: ['Bridgeport','New Haven','Hartford','Stamford','Waterbury','Norwalk'],
-  DE: ['Wilmington','Dover','Newark','Middletown'],
-  FL: ['Jacksonville','Miami','Tampa','Orlando','St. Petersburg','Hialeah','Tallahassee','Fort Lauderdale','Cape Coral','Pembroke Pines','Hollywood','Gainesville'],
-  GA: ['Atlanta','Augusta','Columbus','Macon','Savannah','Athens','Sandy Springs','Roswell'],
-  HI: ['Honolulu','Pearl City','Hilo','Kailua','Waipahu'],
-  ID: ['Boise','Nampa','Meridian','Idaho Falls','Pocatello'],
-  IL: ['Chicago','Aurora','Rockford','Joliet','Naperville','Springfield','Peoria','Elgin'],
-  IN: ['Indianapolis','Fort Wayne','Evansville','South Bend','Carmel','Fishers','Bloomington'],
-  IA: ['Des Moines','Cedar Rapids','Davenport','Sioux City','Iowa City'],
-  KS: ['Wichita','Overland Park','Kansas City','Topeka','Olathe'],
-  KY: ['Louisville','Lexington','Bowling Green','Owensboro','Covington'],
-  LA: ['New Orleans','Baton Rouge','Shreveport','Lafayette','Lake Charles'],
-  ME: ['Portland','Lewiston','Bangor','South Portland'],
-  MD: ['Baltimore','Frederick','Rockville','Gaithersburg','Bowie'],
-  MA: ['Boston','Worcester','Springfield','Cambridge','Lowell','Brockton','New Bedford'],
-  MI: ['Detroit','Grand Rapids','Warren','Sterling Heights','Ann Arbor','Lansing','Flint'],
-  MN: ['Minneapolis','Saint Paul','Rochester','Duluth','Bloomington','Brooklyn Park'],
-  MS: ['Jackson','Gulfport','Southaven','Hattiesburg','Biloxi'],
-  MO: ['Kansas City','Saint Louis','Springfield','Columbia','Independence'],
-  MT: ['Billings','Missoula','Great Falls','Bozeman','Butte'],
-  NE: ['Omaha','Lincoln','Bellevue','Grand Island'],
-  NV: ['Las Vegas','Henderson','Reno','North Las Vegas','Sparks'],
-  NH: ['Manchester','Nashua','Concord','Derry','Dover'],
-  NJ: ['Newark','Jersey City','Paterson','Elizabeth','Trenton','Camden'],
-  NM: ['Albuquerque','Las Cruces','Rio Rancho','Santa Fe','Roswell'],
-  NY: ['New York City','Buffalo','Rochester','Yonkers','Syracuse','Albany','New Rochelle'],
-  NC: ['Charlotte','Raleigh','Greensboro','Durham','Winston-Salem','Fayetteville','Cary'],
-  ND: ['Fargo','Bismarck','Grand Forks','Minot'],
-  OH: ['Columbus','Cleveland','Cincinnati','Toledo','Akron','Dayton'],
-  OK: ['Oklahoma City','Tulsa','Norman','Broken Arrow','Lawton'],
-  OR: ['Portland','Salem','Eugene','Gresham','Hillsboro','Beaverton'],
-  PA: ['Philadelphia','Pittsburgh','Allentown','Erie','Reading','Scranton'],
-  RI: ['Providence','Cranston','Warwick','Pawtucket'],
-  SC: ['Columbia','Charleston','North Charleston','Mount Pleasant','Rock Hill'],
-  SD: ['Sioux Falls','Rapid City','Aberdeen','Brookings'],
-  TN: ['Nashville','Memphis','Knoxville','Chattanooga','Clarksville','Murfreesboro'],
-  TX: ['Houston','San Antonio','Dallas','Austin','Fort Worth','El Paso','Arlington','Corpus Christi','Plano','Laredo','Lubbock','Garland','Irving','Frisco','McKinney'],
-  UT: ['Salt Lake City','West Valley City','Provo','West Jordan','Orem','Sandy'],
-  VT: ['Burlington','Essex','South Burlington','Colchester'],
-  VA: ['Virginia Beach','Norfolk','Chesapeake','Richmond','Newport News','Alexandria'],
-  WA: ['Seattle','Spokane','Tacoma','Vancouver','Bellevue','Kent','Everett'],
-  WV: ['Charleston','Huntington','Morgantown','Parkersburg'],
-  WI: ['Milwaukee','Madison','Green Bay','Kenosha','Racine'],
-  WY: ['Cheyenne','Casper','Laramie','Gillette'],
-};
-
-const DEVICES = [
-  { code: '', label: 'Any Device' },
-  { code: 'windows', label: 'Windows' },
-  { code: 'unix',    label: 'Unix/Linux' },
-  { code: 'apple',   label: 'Apple/macOS' },
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmt(n) { return n?.toLocaleString(undefined, { maximumFractionDigits: 1 }) ?? '—'; }
-
-// Generates a random uppercase alphanumeric ID (matches Evomi's session ID format)
-function randomId(len) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
-function Section({ title, note, children }) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-baseline gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-600">{title}</span>
-        {note && <span className="text-[10px] text-gray-700">{note}</span>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Toggle({ checked, onChange, label }) {
-  return (
-    <label className="flex items-center gap-2 cursor-pointer group select-none">
-      <div onClick={() => onChange(!checked)}
-        className={`relative w-8 h-4 rounded-full transition-colors ${checked ? 'bg-indigo-600' : 'bg-[#2a2a2a]'}`}>
-        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
-      </div>
-      <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">{label}</span>
-    </label>
-  );
-}
-
-function PillGroup({ options, value, onChange }) {
-  return (
-    <div className="flex gap-1.5 flex-wrap">
-      {options.map(o => (
-        <button key={o.id} onClick={() => onChange(o.id)}
-          className={`px-3 py-1 rounded text-xs transition-all ${
-            value === o.id
-              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900'
-              : 'bg-[#141414] border border-[#222] text-gray-500 hover:border-[#333] hover:text-gray-300'
-          }`}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Dropdown({ label, value, onChange, options, placeholder = 'Select…' }) {
-  return (
-    <div>
-      {label && <label className="text-[10px] text-gray-600 block mb-1">{label}</label>}
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/50 transition-colors appearance-none cursor-pointer">
-        <option value="">{placeholder}</option>
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
-// ─── Searchable ISP dropdown ─────────────────────────────────────────────────
-
-function IspSelect({ isps, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const ref = useRef(null);
+export default function Landing() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
   useEffect(() => {
-    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, []);
-
-  const filtered = [{ code: '', label: 'Random (All ISPs)' }, ...isps].filter(isp =>
-    !query || isp.label.toLowerCase().includes(query.toLowerCase()) || isp.code.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 80);
-
-  const selectedLabel = value === '' ? 'Random (All ISPs)' : (isps.find(i => i.code === value)?.label || value);
-
-  return (
-    <div ref={ref} className="relative">
-      <label className="text-[10px] text-gray-600 block mb-1">ISP</label>
-      <div onClick={() => setOpen(!open)}
-        className="bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 cursor-pointer text-xs hover:border-[#2a2a2a] transition-colors flex items-center justify-between">
-        <span className={value === '' ? 'text-indigo-300' : 'text-gray-300'}>{selectedLabel}</span>
-        <span className="text-gray-700">▾</span>
-      </div>
-      {open && (
-        <div className="absolute z-50 w-full top-full mt-1 bg-[#0f0f0f] border border-[#222] rounded-lg shadow-2xl overflow-hidden">
-          <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Search ISPs…"
-            className="w-full bg-transparent border-b border-[#222] px-3 py-2 text-xs text-gray-300 placeholder-gray-700 focus:outline-none"
-            onClick={e => e.stopPropagation()} />
-          <div className="max-h-52 overflow-y-auto">
-            {filtered.map(isp => (
-              <button key={isp.code} onClick={() => { onChange(isp.code); setOpen(false); setQuery(''); }}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#1a1a1a] transition-colors ${
-                  value === isp.code ? 'text-indigo-300 bg-indigo-900/20' : isp.code === '' ? 'text-indigo-400/70' : 'text-gray-400'
-                }`}>
-                {isp.code === '' ? '⟳ ' : <span className="text-gray-600 mr-2 text-[10px]">{isp.code}</span>}
-                {isp.label}
-              </button>
-            ))}
-            {filtered.length === 0 && <p className="px-3 py-3 text-xs text-gray-700">No matches</p>}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
-
-export default function Home() {
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [apiKey, setApiKey]           = useState('');
-  const [connecting, setConnecting]   = useState(false);
-  const [connectError, setConnectError] = useState('');
-  const [accountData, setAccountData] = useState(null);
-  const [isps, setIsps]               = useState([]);
-
-  // Form
-  const [product, setProduct]         = useState('rp');
-  const [amount, setAmount]           = useState(10000);
-  const [sessionType, setSessionType] = useState('rotating');
-  const [lifetime, setLifetime]       = useState(30);
-
-  // Geo (always US)
-  const [selState, setSelState]       = useState('');
-  const [selCity, setSelCity]         = useState('');
-  const [selIsp, setSelIsp]           = useState('');
-
-  // Expert (rp only)
-  const [fraudscore, setFraudscore]   = useState('');
-  const [device, setDevice]           = useState('');
-  const [latency, setLatency]         = useState('');
-  const [adblock, setAdblock]         = useState(false);
-  const [http3, setHttp3]             = useState(false);
-  const [localDns, setLocalDns]       = useState(false);
-  const [extended, setExtended]       = useState(false);
-
-  // Mask
-  const [maskEnabled, setMaskEnabled] = useState(false);
-  const [maskHost, setMaskHost]       = useState('proxy.example.com');
-
-  // Output
-  const [proxies, setProxies]         = useState([]);
-  const [genError, setGenError]       = useState('');
-  const [copied, setCopied]           = useState(false);
-
-  // ── Connect ───────────────────────────────────────────────────────────────
-
-  const connect = useCallback(async () => {
-    const key = apiKeyInput.trim();
-    if (!key) return;
-    setConnecting(true);
-    setConnectError('');
-    try {
-      const [accRes, setRes] = await Promise.all([
-        fetch(`/api/account?apikey=${encodeURIComponent(key)}`),
-        fetch(`/api/settings?apikey=${encodeURIComponent(key)}`),
-      ]);
-      if (!accRes.ok) throw new Error('Invalid API key');
-      const acc = await accRes.json();
-      if (!acc.success && !acc.products) throw new Error(acc.error || 'Auth failed');
-      setAccountData(acc);
-      setApiKey(key);
-      if (setRes.ok) {
-        const settings = await setRes.json();
-        parseSettings(settings);
-      }
-    } catch (e) {
-      setConnectError(e.message);
-    } finally {
-      setConnecting(false);
-    }
-  }, [apiKeyInput]);
-
-  const parseSettings = (settings) => {
-    // Try rp first, then rpc, then flat
-    const src = settings.rp || settings.rpc || settings;
-    if (src?.isps && typeof src.isps === 'object') {
-      const list = Object.entries(src.isps).map(([code, info]) => ({
-        code,
-        label: typeof info === 'string' ? info : (info.label || info.name || code),
-      })).sort((a, b) => a.label.localeCompare(b.label));
-      setIsps(list);
-    }
-  };
-
-  // ── Generate — build proxy strings locally from account credentials ─────────
-
-  const generate = useCallback(() => {
-    if (!accountData?.products?.[product]) {
-      setGenError('Product not available for this account');
-      return;
-    }
-
-    setGenError('');
-    setProxies([]);
-
-    const prod = accountData.products[product];
-    const { username, password } = prod;
-    const endpoint = prod.endpoint || PRODUCTS.find(p => p.id === product)?.endpoint;
-    const port = prod.ports?.http || 1000;
-
-    // Build the targeting suffix appended to the password
-    let suffix = '_country-US';
-
-    if (selState) {
-      const stateName = US_STATES.find(s => s.code === selState)?.name;
-      if (stateName) suffix += `_region-${stateName.toLowerCase().replace(/\s+/g, '.')}`;
-    }
-    if (selCity) suffix += `_city-${selCity.toLowerCase().replace(/\s+/g, '.')}`;
-    if (selIsp)  suffix += `_isp-${selIsp}`;
-
-    // Expert (Premium Residential only)
-    if (product === 'rp') {
-      if (fraudscore)  suffix += `_fraudscore-${fraudscore}`;
-      if (device)      suffix += `_device-${device}`;
-      if (latency)     suffix += `_latency-${latency}`;
-      if (adblock)     suffix += '_adblock-1';
-      if (http3)       suffix += '_http3-1';
-      if (localDns)    suffix += '_localdns-1';
-      if (extended)    suffix += '_extended-1';
-    }
-
-    const result = [];
-    for (let i = 0; i < amount; i++) {
-      let pass = password + suffix;
-
-      if (sessionType === 'sticky') {
-        pass += `_session-${randomId(9)}`;
-        if (lifetime) pass += `_lifetime-${lifetime}`;
-      } else if (sessionType === 'hard') {
-        pass += `_hardsession-${randomId(9)}`;
-      }
-
-      let line = `${endpoint}:${port}:${username}:${pass}`;
-
-      // Mask hostname
-      if (maskEnabled && maskHost.trim()) {
-        line = line.replace(/[\w.-]+\.evomi\.com/g, maskHost.trim());
-      }
-
-      result.push(line);
-    }
-
-    setProxies(result);
-  }, [
-    accountData, product, amount, sessionType, lifetime,
-    selState, selCity, selIsp,
-    fraudscore, device, latency, adblock, http3, localDns, extended,
-    maskEnabled, maskHost,
-  ]);
-
-  // ── Output actions ────────────────────────────────────────────────────────
-
-  const copyAll = async () => {
-    if (!proxies.length) return;
-    await navigator.clipboard.writeText(proxies.join('\n'));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const exportTxt = () => {
-    if (!proxies.length) return;
-    const blob = new Blob([proxies.join('\n')], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `proxies-${product}-US-${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // ── Derived ───────────────────────────────────────────────────────────────
-
-  const getBalance = pid => accountData?.products?.[pid]?.balance_mb ?? null;
-  const isRp = product === 'rp';
-  const cityOptions = selState ? (US_CITIES[selState] || []) : [];
-  const curProd = PRODUCTS.find(p => p.id === product);
-
-  // ── Render ────────────────────────────────────────────────────────────────
+    if (status === 'authenticated') router.replace('/dashboard');
+  }, [status, router]);
 
   return (
     <>
-      <Head><title>Evomi Proxy Generator</title></Head>
-      <div className="min-h-screen bg-[#080808] text-white" style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+      <Head>
+        <title>Santah Resis — Premium US Residential Proxies</title>
+        <meta name="description" content="Premium US residential proxies with state & city targeting. Instant generation, sticky sessions, ISP filtering." />
+      </Head>
 
-        {/* Header */}
-        <header className="sticky top-0 z-40 bg-[#080808] border-b border-[#161616]">
-          <div className="max-w-screen-2xl mx-auto px-5 h-12 flex items-center gap-5">
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center">
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <circle cx="6" cy="6" r="5" stroke="white" strokeWidth="1.5"/>
-                  <circle cx="6" cy="6" r="2" fill="white"/>
-                </svg>
-              </div>
-              <span className="text-sm font-semibold text-gray-200 tracking-tight">Evomi Proxy</span>
+      <div className="min-h-screen bg-[#080808] text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+        {/* Nav */}
+        <nav className="border-b border-[#141414] px-6 py-4">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="text-2xl leading-none">🎅</span>
+              <span className="text-lg font-bold tracking-tight">
+                <span className="text-lime-400">Santah</span>
+                <span className="text-white"> Resis</span>
+              </span>
             </div>
-            <div className="flex items-center gap-2 flex-1 max-w-xl">
-              <input type="password" value={apiKeyInput}
-                onChange={e => setApiKeyInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && connect()}
-                placeholder="Paste API key…"
-                className="flex-1 bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-indigo-500/50 transition-colors" />
-              <button onClick={connect} disabled={connecting || !apiKeyInput.trim()}
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-xs rounded transition-colors">
-                {connecting ? 'Connecting…' : 'Connect'}
-              </button>
-              {connectError && <span className="text-xs text-red-400">{connectError}</span>}
-              {accountData && !connectError && (
-                <span className="text-xs text-emerald-500 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />Connected
-                </span>
-              )}
-            </div>
-            {accountData && (
-              <div className="ml-auto flex items-center gap-4 text-[11px]">
-                {PRODUCTS.map(p => {
-                  const bal = getBalance(p.id);
-                  if (!bal || bal <= 0) return null;
-                  return (
-                    <span key={p.id} className={product === p.id ? 'text-gray-300' : 'text-gray-600'}>
-                      {p.label.split(' ')[0]} <span className="text-indigo-400">{fmt(bal)} MB</span>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
+            <button
+              onClick={() => signIn('discord')}
+              className="flex items-center gap-2 px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <DiscordIcon />
+              Login with Discord
+            </button>
           </div>
-        </header>
+        </nav>
 
-        <div className="max-w-screen-2xl mx-auto flex" style={{ height: 'calc(100vh - 48px)' }}>
+        {/* Hero */}
+        <section className="relative overflow-hidden px-6 py-28 text-center">
+          {/* Background glow */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-lime-500/5 rounded-full blur-3xl" />
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[400px] h-[200px] bg-red-600/5 rounded-full blur-3xl" />
+          </div>
 
-          {/* Sidebar */}
-          <aside className="w-64 flex-shrink-0 border-r border-[#161616] overflow-y-auto px-4 py-5 space-y-6">
+          {/* Snowflakes */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
+            {['top-8 left-[10%]','top-16 right-[15%]','top-4 left-[45%]','top-24 left-[30%]','top-12 right-[35%]','top-32 left-[70%]','top-6 right-[55%]','top-40 left-[20%]'].map((pos, i) => (
+              <span key={i} className={`absolute text-white/5 text-3xl ${pos}`}>❄</span>
+            ))}
+          </div>
 
-            {/* Product */}
-            <Section title="Product">
-              <div className="space-y-1">
-                {PRODUCTS.map(p => {
-                  const bal = getBalance(p.id);
-                  return (
-                    <button key={p.id} onClick={() => setProduct(p.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs transition-all ${
-                        product === p.id
-                          ? 'bg-indigo-900/30 border border-indigo-600/30 text-indigo-200'
-                          : 'bg-[#111] border border-[#1a1a1a] text-gray-500 hover:border-[#252525] hover:text-gray-300'
-                      }`}>
-                      <span>{p.label}</span>
-                      {bal > 0 && <span className="text-[10px] text-emerald-600">{fmt(bal)} MB</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </Section>
-
-            {/* Amount */}
-            <Section title={`Amount — ${amount.toLocaleString()}`}>
-              <div className="flex items-center gap-2">
-                <input type="range" min="1" max="10000" value={amount}
-                  onChange={e => setAmount(+e.target.value)}
-                  className="flex-1 accent-indigo-500 h-1" />
-                <input type="number" min="1" max="10000" value={amount}
-                  onChange={e => setAmount(Math.min(10000, Math.max(1, +e.target.value || 1)))}
-                  className="w-16 bg-[#111] border border-[#1e1e1e] rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-indigo-500/50" />
-              </div>
-              <p className="text-[10px] text-gray-700">Auto-batched in groups of 500</p>
-            </Section>
-
-            {/* Session */}
-            <Section title="Session Type">
-              <PillGroup
-                options={[
-                  { id: 'rotating', label: 'Rotating' },
-                  { id: 'sticky',   label: 'Sticky'   },
-                  { id: 'hard',     label: 'Hard'      },
-                ]}
-                value={sessionType} onChange={setSessionType} />
-              {sessionType === 'sticky' && (
-                <div className="mt-2">
-                  <label className="text-[10px] text-gray-600 block mb-1">Lifetime (minutes, 1–1440)</label>
-                  <input type="number" min="1" max="1440" value={lifetime}
-                    onChange={e => setLifetime(Math.min(1440, Math.max(1, +e.target.value || 1)))}
-                    className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500/50" />
-                </div>
-              )}
-            </Section>
-
-            {/* Geo — always USA */}
-            <Section title="Geo Targeting" note="US only">
-              <div className="flex items-center gap-2 px-3 py-2 bg-[#111] border border-[#1a1a1a] rounded mb-2">
-                <span className="text-indigo-400 text-xs font-medium">🇺🇸 United States</span>
-                <span className="text-[10px] text-gray-700 ml-auto">fixed</span>
-              </div>
-              <Dropdown
-                label="State"
-                value={selState}
-                onChange={v => { setSelState(v); setSelCity(''); }}
-                options={US_STATES.map(s => ({ value: s.code, label: s.name }))}
-                placeholder="Any state"
-              />
-              {selState && cityOptions.length > 0 && (
-                <div className="mt-2">
-                  <Dropdown
-                    label="City"
-                    value={selCity}
-                    onChange={setSelCity}
-                    options={cityOptions.map(c => ({ value: c, label: c }))}
-                    placeholder="Any city"
-                  />
-                </div>
-              )}
-              <div className="mt-2">
-                <IspSelect isps={isps} value={selIsp} onChange={setSelIsp} />
-              </div>
-            </Section>
-
-            {/* Expert Settings (rp only) */}
-            {isRp && (
-              <Section title="Expert Settings" note="Premium only">
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-[10px] text-gray-600 block mb-1">Max Fraud Score (0–100)</label>
-                    <input type="number" min="0" max="100" placeholder="Any" value={fraudscore}
-                      onChange={e => setFraudscore(e.target.value)}
-                      className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-indigo-500/50" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-600 block mb-1">Device Type</label>
-                    <select value={device} onChange={e => setDevice(e.target.value)}
-                      className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500/50">
-                      {DEVICES.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-600 block mb-1">Max Latency (ms)</label>
-                    <input type="number" min="1" placeholder="Any" value={latency}
-                      onChange={e => setLatency(e.target.value)}
-                      className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-indigo-500/50" />
-                  </div>
-                  <div className="space-y-2 pt-1">
-                    <Toggle checked={adblock}  onChange={setAdblock}  label="Ad Blocking" />
-                    <Toggle checked={http3}    onChange={setHttp3}    label="HTTP3 / QUIC" />
-                    <Toggle checked={localDns} onChange={setLocalDns} label="Local DNS" />
-                    <Toggle checked={extended} onChange={setExtended} label="Extended Pool (4–6× IPs)" />
-                  </div>
-                </div>
-              </Section>
-            )}
-
-            {/* Mask hostname */}
-            <Section title="Output Options">
-              <Toggle checked={maskEnabled} onChange={setMaskEnabled} label="Mask hostname" />
-              {maskEnabled && (
-                <div className="pl-9 mt-1 space-y-1">
-                  <input type="text" placeholder="proxy.example.com" value={maskHost}
-                    onChange={e => setMaskHost(e.target.value)}
-                    className="w-full bg-[#111] border border-[#1e1e1e] rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-indigo-500/50" />
-                  <p className="text-[10px] text-gray-700 leading-relaxed">
-                    Replaces <span className="text-gray-600">{curProd?.endpoint}</span> in output.
-                    Set CNAME → <span className="text-gray-600">{curProd?.endpoint}</span> for working proxies.
-                  </p>
-                </div>
-              )}
-            </Section>
-
-          </aside>
-
-          {/* Main */}
-          <main className="flex-1 min-w-0 flex flex-col p-5">
-
-            {/* Action bar */}
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <button onClick={generate} disabled={!apiKey}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm rounded font-medium transition-colors">
-                Generate {amount.toLocaleString()} Proxies
-              </button>
-
-              {proxies.length > 0 && <>
-                <button onClick={copyAll}
-                  className="px-3 py-2 bg-[#141414] hover:bg-[#1e1e1e] border border-[#222] hover:border-[#2a2a2a] text-xs rounded transition-colors">
-                  {copied ? '✓ Copied' : 'Copy All'}
-                </button>
-                <button onClick={exportTxt}
-                  className="px-3 py-2 bg-[#141414] hover:bg-[#1e1e1e] border border-[#222] hover:border-[#2a2a2a] text-xs rounded transition-colors">
-                  Export .txt
-                </button>
-                <button onClick={() => setProxies([])}
-                  className="px-3 py-2 bg-[#141414] hover:bg-[#1e1e1e] border border-[#222] hover:border-[#2a2a2a] text-xs text-gray-600 hover:text-gray-400 rounded transition-colors">
-                  Clear
-                </button>
-                <span className="ml-auto text-xs text-gray-700">
-                  {proxies.length.toLocaleString()} proxies · {curProd?.label} · HTTP · US{selState ? ` · ${selState}` : ''}{selCity ? ` · ${selCity}` : ''}
-                </span>
-              </>}
+          <div className="relative max-w-4xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-lime-500/10 border border-lime-500/20 rounded-full text-lime-400 text-xs font-medium mb-8">
+              <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+              Premium US Residential Network
             </div>
 
-            {genError && (
-              <div className="mb-4 px-4 py-3 bg-red-950/50 border border-red-800/40 rounded text-xs text-red-400">
-                {genError}
-              </div>
-            )}
+            <h1 className="text-5xl sm:text-7xl font-black tracking-tight mb-6 leading-none">
+              <span className="text-white">Proxies that</span>
+              <br />
+              <span className="text-lime-400">actually</span>
+              <span className="text-red-500"> work.</span>
+            </h1>
 
-            {!apiKey && (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center space-y-3">
-                  <div className="w-10 h-10 rounded-full bg-[#111] border border-[#1e1e1e] flex items-center justify-center mx-auto">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-600">
-                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-                    </svg>
+            <p className="text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+              Premium US residential proxies with state & city targeting, ISP filtering,
+              and sticky sessions. Built for scale — generate 10,000 proxies instantly.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => signIn('discord')}
+                className="flex items-center gap-2.5 px-8 py-3.5 bg-lime-500 hover:bg-lime-400 text-black font-bold text-base rounded-xl transition-all hover:scale-105 shadow-lg shadow-lime-500/20"
+              >
+                <DiscordIcon className="text-black" />
+                Get Started Free
+              </button>
+              <span className="text-gray-600 text-sm">Login with Discord · No credit card</span>
+            </div>
+
+            {/* Proxy preview */}
+            <div className="mt-16 mx-auto max-w-2xl bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl overflow-hidden text-left">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1a1a1a] bg-[#0f0f0f]">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                <span className="w-2.5 h-2.5 rounded-full bg-lime-500/60" />
+                <span className="text-[10px] text-gray-600 ml-2 font-mono">proxies.txt</span>
+              </div>
+              <div className="px-4 py-4 space-y-1.5 font-mono text-[11px]">
+                {[
+                  'biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_region-california@rp.evomi.com:1000',
+                  'biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_region-texas@rp.evomi.com:1000',
+                  'biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_session-AB3K7XY9@rp.evomi.com:1000',
+                ].map((p, i) => (
+                  <div key={i} className="text-gray-500 truncate">
+                    <span className="text-lime-600/70 select-none">{i + 1}  </span>
+                    {p}
                   </div>
-                  <p className="text-sm text-gray-700">Enter your Evomi API key to get started</p>
+                ))}
+                <div className="text-gray-700 text-[10px] pt-1">… 9,997 more proxies</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="px-6 py-20 border-t border-[#141414]">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="text-center text-3xl font-bold mb-3">
+              Everything you need
+            </h2>
+            <p className="text-center text-gray-500 mb-12">Residential proxies built for serious use cases.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {FEATURES.map((f, i) => (
+                <div key={i} className="bg-[#0f0f0f] border border-[#1a1a1a] hover:border-[#242424] rounded-xl p-5 transition-colors group">
+                  <div className="text-2xl mb-3">{f.icon}</div>
+                  <h3 className="font-semibold text-white mb-2 group-hover:text-lime-400 transition-colors">{f.title}</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">{f.desc}</p>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
+          </div>
+        </section>
 
-            {apiKey && proxies.length === 0 && !genError && (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-sm text-gray-700">Configure settings and click Generate</p>
-              </div>
-            )}
+        {/* CTA Banner */}
+        <section className="px-6 py-16 border-t border-[#141414]">
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="text-4xl mb-4">🎅</div>
+            <h2 className="text-3xl font-black mb-4">
+              Ready to <span className="text-lime-400">go?</span>
+            </h2>
+            <p className="text-gray-500 mb-8">Login with Discord and start generating proxies in seconds.</p>
+            <button
+              onClick={() => signIn('discord')}
+              className="flex items-center gap-2.5 px-8 py-3.5 bg-lime-500 hover:bg-lime-400 text-black font-bold text-base rounded-xl transition-all hover:scale-105 mx-auto shadow-lg shadow-lime-500/20"
+            >
+              <DiscordIcon className="text-black" />
+              Login with Discord
+            </button>
+          </div>
+        </section>
 
-            {proxies.length > 0 && (
-              <div className="flex-1 flex flex-col bg-[#0d0d0d] border border-[#1a1a1a] rounded-lg overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-2 border-b border-[#1a1a1a] bg-[#0f0f0f]">
-                  <span className="text-[10px] text-gray-700 uppercase tracking-widest">Output — host:port:user:pass</span>
-                  <span className="ml-auto text-[10px] text-gray-700">{proxies.length.toLocaleString()} lines</span>
-                </div>
-                <textarea readOnly value={proxies.join('\n')}
-                  className="flex-1 w-full bg-transparent px-4 py-3 text-xs text-gray-300 resize-none focus:outline-none leading-5 font-mono"
-                  spellCheck={false} />
-              </div>
-            )}
+        {/* Footer */}
+        <footer className="border-t border-[#141414] px-6 py-8">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🎅</span>
+              <span className="font-bold text-sm">
+                <span className="text-lime-400">Santah</span> Resis
+              </span>
+            </div>
+            <p className="text-gray-700 text-xs">© {new Date().getFullYear()} Santah Resis. Premium US Residential Proxies.</p>
+          </div>
+        </footer>
 
-          </main>
-        </div>
       </div>
     </>
+  );
+}
+
+function DiscordIcon({ className = '' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.045.031.057a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+    </svg>
   );
 }
