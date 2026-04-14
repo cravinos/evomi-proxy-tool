@@ -20,14 +20,14 @@ const SECTIONS = [
             <span className="text-[10px] text-gray-600 font-mono ml-1">example proxy</span>
           </div>
           <pre className="px-4 py-3 text-xs text-lime-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">
-{`rp.evomi.com:1000:biggestwa:kNxodLDTBwgvOnP2ugQR_country-US_session-AB3K9XYZ`}
+{`rp.evomi.com:1000:user12345:pXm8qRtYvN3wKsB7dF2j_country-US_session-AB3K9XYZ`}
           </pre>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           {[
             { label: 'Host', value: 'rp.evomi.com', color: 'text-lime-400' },
             { label: 'Port', value: '1000', color: 'text-yellow-400' },
-            { label: 'Username', value: 'biggestwa', color: 'text-blue-400' },
+            { label: 'Username', value: 'user12345', color: 'text-blue-400' },
             { label: 'Password + Params', value: 'pass_country-US_...', color: 'text-red-400' },
           ].map(p => (
             <div key={p.label} className="bg-[#111] border border-[#1e1e1e] rounded p-2">
