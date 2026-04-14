@@ -267,6 +267,8 @@ export default function Dashboard() {
   const [generating, setGenerating]     = useState(false);
   const [genError, setGenError]         = useState('');
   const [copied, setCopied]             = useState(false);
+  const [testing, setTesting]           = useState(false);
+  const [testResult, setTestResult]     = useState(null);
 
   const connect = useCallback(async () => {
     const key = apiKeyInput.trim();
@@ -387,6 +389,22 @@ export default function Dashboard() {
     a.download = `santah-resis-${product}-US-${Date.now()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const testProxy = async (site) => {
+    if (!proxies.length || testing) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const proxy = proxies[0];
+      const res = await fetch(`/api/test-proxy?proxy=${encodeURIComponent(proxy)}&site=${encodeURIComponent(site)}`);
+      const data = await res.json();
+      setTestResult(data);
+    } catch (e) {
+      setTestResult({ success: false, error: e.message, site });
+    } finally {
+      setTesting(false);
+    }
   };
 
   const getBalance = pid => accountData?.products?.[pid]?.balance_mb ?? null;
@@ -604,6 +622,50 @@ export default function Dashboard() {
             {genError && (
               <div className="mb-4 px-4 py-3 bg-red-950/50 border border-red-800/40 rounded text-xs text-red-400">
                 {genError}
+              </div>
+            )}
+
+            {/* RTT Tester */}
+            {proxies.length > 0 && (
+              <div className="mb-4 flex items-center gap-3 flex-wrap px-4 py-3 bg-[#0f0f0f] border border-[#1a1a1a] rounded-lg">
+                <span className="text-[10px] text-gray-600 uppercase tracking-widest flex-shrink-0">Test RTT</span>
+                <div className="flex gap-2">
+                  {['walmart.com', 'pokemoncenter.com', 'target.com'].map(site => (
+                    <button key={site} onClick={() => testProxy(site)} disabled={testing}
+                      className={`px-3 py-1 text-xs rounded border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        testResult?.site === site
+                          ? testResult.success
+                            ? 'border-lime-500/40 bg-lime-500/10 text-lime-300'
+                            : 'border-red-500/40 bg-red-500/10 text-red-400'
+                          : 'border-[#222] bg-[#141414] text-gray-400 hover:border-lime-500/30 hover:text-gray-200'
+                      }`}>
+                      {site.replace('.com', '')}
+                    </button>
+                  ))}
+                </div>
+
+                {testing && (
+                  <span className="text-xs text-gray-600 animate-pulse ml-2">Testing proxy #1…</span>
+                )}
+
+                {testResult && !testing && (
+                  <div className="flex items-center gap-2 ml-2">
+                    {testResult.success ? (
+                      <>
+                        <span className="text-lime-400 text-xs font-mono">✓ {testResult.rtt}ms</span>
+                        <span className="text-gray-600 text-[10px]">HTTP {testResult.status} · {testResult.site}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-red-400 text-xs">✗ {testResult.error}</span>
+                        <span className="text-gray-600 text-[10px]">· {testResult.site}</span>
+                      </>
+                    )}
+                    <button onClick={() => setTestResult(null)} className="text-gray-700 hover:text-gray-500 text-xs ml-1">✕</button>
+                  </div>
+                )}
+
+                <span className="text-[10px] text-gray-700 ml-auto">proxy #1 of {proxies.length.toLocaleString()}</span>
               </div>
             )}
 
