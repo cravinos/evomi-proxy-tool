@@ -369,7 +369,7 @@ export default function Dashboard() {
           if (passwordSuffix) {
             const parts = line.split(':');
             if (parts.length >= 4) {
-              parts[3] = parts[3] + expertSuffix;
+              parts[3] = parts[3] + passwordSuffix;
               line = parts.join(':');
             }
           }
